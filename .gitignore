@@ -1,0 +1,14 @@
+.Rproj.user/
+# geddes regime categorization
+data/GWF_AllPoliticalRegimes.dta
+# cow?
+data/cinc6.dta
+# polity 5 data
+data/p5v2018.xls
+# cow?
+data/MIDB 5.0.dta
+
+# other sources
+data/MIDA 5.0.dta
+data/MIDI 5.0.dta
+data/MIDIP 5.0.dta
