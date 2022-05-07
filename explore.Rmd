@@ -1,0 +1,246 @@
+---
+title: "Untitled"
+author: "Arielle Herman"
+date: "5/6/2022"
+output: html_document
+---
+
+```{r include=FALSE, warning=F, message=F}
+library(tidyverse)
+library(haven)
+library(peacesciencer)
+source("metadata.R")
+# contiguity data
+data(cow_contdir)
+data(cow_majors)
+data("cow_alliance")
+# add_cow_alliance()
+#add_contiguity()
+#add_cow_majors()
+#add_cow_mids()
+
+data("cow_mid_ddydisps")
+data("cow_mid_disps")
+# geddes categorization data
+# case: country-year
+# cowcode, year
+gwf <- haven::read_dta("data/GWF_AllPoliticalRegimes.dta") %>% rename_all(~str_replace_all(., "wf", "")) %>% na_if("") %>% na_if("NA")
+
+cinc <- haven::read_dta("data/cinc6.dta") %>% na_if(-9)
+
+# One record per participant per dispute
+## missing data coded as -9
+midb <- read_dta("data/MIDB 5.0.dta") %>% na_if(-9)
+
+# one record per dispute
+#mida <- read_dta("data/MIDA 5.0.dta") %>% na_if(-9)
+
+labelled_cols <- lapply(metadata$col, function(col) {
+  index <- which(metadata$col == col)
+  labels <- unlist(metadata$labels[index])
+  label <- metadata$label[index]
+  #return(list(index, labels, label))
+  midb[col] %>% mutate(across(col, ~labelled(as.integer(.), labels, label)))
+}) %>% reduce(bind_cols)
+
+midb[metadata$col] <- labelled_cols
+
+# case: (country-year)
+# cyear, code 
+pol <- readxl::read_excel("data/p5v2018.xls") %>% select(-country)
+
+pol_labelled_cols <- lapply(pol_metadata$col, function(col) {
+  index <- which(pol_metadata$col == col)
+  labels <- unlist(pol_metadata$labels[index])
+  label <- pol_metadata$label[index]
+  #return(list(index, labels, label))
+  pol[col] %>% mutate(across(col, ~labelled(as.integer(.), labels, label)))
+}) %>% reduce(bind_cols)
+pol[pol_metadata$col] <- pol_labelled_cols
+```
+
+
+```{r}
+# 1. expand data frame for each year of conflict
+
+
+country_year <- midb %>%
+  # keep observations starting at 1945
+  filter(styear >= 1945) %>%
+  # only keep conflicts that involve dyads
+  group_by(dispnum) %>% filter(max(row_number()) <= 2) %>% ungroup %>%
+  #filter(dispnum  %in% c(20, 7, 26)) %>%
+  rowwise() %>%
+  mutate(year = list(seq(styear, endyear))) %>%
+  unnest(year) %>%
+  select(-styear, -endyear) %>% #distinct(ccode, year)
+
+# 2. add the country-year variables
+  # energy and cinc: checked
+  left_join(cinc, by = c("ccode", "year")) %>%
+  # democracy regime type (a little unclear to me): review
+  left_join(pol, by = c("ccode", "year")) %>%
+  # autocracy regime type: review
+  left_join(gwf, by = c("ccode" = "cowcode", "year")) %>%
+  # major power: checked
+  left_join(left_join(year_maj)) %>%
+  
+  mutate(majpow = !is.na(majpow),
+         #econadv ? what is the cutoff in pec?: review
+         geddes_regimetype = case_when(
+           str_detect(g_regimetype, "-") ~ "hybrid",
+           str_detect(g_regimetype, "party|oligarchy") ~ "party",
+           str_detect(g_regimetype, "military") ~ "military",
+           TRUE ~ g_regimetype),
+         regimetype = case_when(
+           # makes more sense just to use geddes unless we don't have her?
+           !is.na(geddes_regimetype) ~ geddes_regimetype,
+           democ >= 6 ~ "democracy",
+           TRUE ~ g_regimetype
+         )) %>%
+  select(dispnum, ccode, g_country, year, regimetype, #pec,
+         cinc,
+         majpow) #%>%
+  group_by(dispnum, year) %>%
+  mutate(homogenous = length(unique(regimetype)) == 1,
+         type = ifelse(homogenous, regimetype, "other"))
+
+mid_dyad <- country_year %>%
+  group_by(dispnum, year) %>% summarize(
+    ccodes = paste(sort(unique(ccode)), collapse = ","),
+    relpow = log(max(cinc)/min(cinc)),
+    majpow = sum(majpow) > 0,
+    homogenous = unique(homogenous),
+    type = unique(type)
+    #homogenous = length(unique(regimetype)) == 1 & !is.na(regimetype)#,
+    #regimetype = ifelse(homogenous, regimetype, "other")
+    ) %>%
+  separate(ccodes, into = c("ccode1", "ccode2"), remove = FALSE) %>%
+  mutate(across(c(ccode1, ccode2), as.double)) %>% ungroup()
+
+
+country_year <- country_year %>% left_join(year_maj) %>% mutate(majpow = !is.na(majpow))
+
+
+```
+
+```{r}
+year_ally <- cow_alliance %>% mutate(allied = if_any(starts_with("cow"), ~ . > 0)) %>%
+  select(starts_with("cc"), year, allied)
+year_cont <- cow_contdir %>% mutate(across(c(begin, end), ~as.double(floor(./100)))) %>%
+  rowwise() %>% mutate(year = list(seq(begin, end))) %>% unnest(year) %>%  mutate(cont = TRUE) %>%
+  select(starts_with("c"), year, -conttype) %>% distinct
+
+year_maj <- cow_majors %>% rowwise() %>%
+  mutate(year = list(seq(styear, endyear))) %>% unnest(year) %>%
+  select(ccode, year) %>%
+  mutate(majpow = TRUE)
+
+year_midb <- midb %>% select(dispnum, ccode, styear, endyear) %>%
+  rowwise() %>% mutate(year = list(seq(styear, endyear))) %>% unnest(year) %>%
+  mutate(mid = TRUE) %>%
+  select(year, ccode, mid, dispnum) %>% distinct
+
+country_year <- cow_states %>%
+  group_by(ccode) %>% rowwise() %>%
+  # 243 rows
+  mutate(year = list(seq(styear, endyear))) %>%
+  # 15,951 rows
+  unnest(year) %>%
+  left_join(cinc, by = c("ccode", "year", "stateabb")) %>%
+  left_join(pol, by = c("ccode", "year")) %>%
+  left_join(gwf, by = c("ccode" = "cowcode", "year")) %>%
+  select(-styear, -endyear) %>%
+  left_join(year_maj) %>% mutate(majpow = !is.na(majpow)) %>%
+  left_join(year_midb) %>%
+  #            filter(endyear >= 1945, styear <= 2010), by = c("ccode")) %>%
+  select(stateabb, ccode, year, #pec,
+         cinc, democ, g_regimetype, majpow, mid, dispnum) %>% ungroup %>%
+  filter(year >= 1945, year <= 2010) %>%
+  mutate(geddes_regimetype = case_when(
+           str_detect(g_regimetype, "-") ~ "hybrid",
+           str_detect(g_regimetype, "party|oligarchy") ~ "party",
+           str_detect(g_regimetype, "military") ~ "military",
+           TRUE ~ g_regimetype),
+         regimetype = case_when(
+           # makes more sense just to use geddes unless we don't have her?
+           !is.na(geddes_regimetype) ~ geddes_regimetype,
+           democ >= 6 ~ "democracy",
+           TRUE ~ g_regimetype
+         ))
+# 9412 to 11809
+
+splitted <- cow_states %>%
+  rowwise() %>%
+  mutate(year = list(seq(styear, endyear))) %>%
+  unnest(year) %>%
+  filter(year >= 1945, year <= 2010) %>%
+  group_by(year) %>% group_split()
+
+expanded <- lapply(splitted, function(element) {
+  expand(element, ccode1 = ccode, ccode2 = ccode, year) %>% filter(ccode2 != ccode1)
+  }) %>% reduce(bind_rows)
+
+
+test <- expanded %>% left_join(country_year, by = c("ccode1" = "ccode", "year"))
+second_join <- test %>% left_join(country_year, by = c("ccode2" = "ccode", "year"))
+
+almost_done <- second_join %>%
+  mutate(
+    majpow = rowSums(across(starts_with("majpow")), na.rm = TRUE) > 0,
+    relpow = ifelse(cinc.x > cinc.y, cinc.x / cinc.y, cinc.y / cinc.x),
+    relpow = log(relpow),
+    homogenous = regimetype.x == regimetype.y,
+    mid = dispnum.y == dispnum.x,
+    dyadtype = ifelse(homogenous, regimetype.x, "other")
+    ) %>% select(-contains("."))
+
+done <- almost_done %>% left_join(year_cont) %>%
+  left_join(year_ally) %>%
+  mutate(across(c(allied, cont, mid), ~ifelse(is.na(.), FALSE, .))) %>% distinct %>%
+  mutate(autocracy = dyadtype != "democracy")
+
+saveRDS(done, "data/output/dyad_year.rds")
+```
+
+
+```{r}
+cow_alliance %>% filter(year == 2011, across(starts_with("cc"), ~. %in% c(770, 2)))
+```
+
+```{r}
+cow_alliance %>% filter(if_all(starts_with("cow"),~ . == 0)) %>%
+  filter(year == 2000)
+
+cow_alliance %>% filter(ccode1 == 740)
+```
+
+
+
+```{r}
+# governments in transition get the same standardized code for both autoc and democ
+pol %>% count(autoc, democ, polity, xrreg, xrcomp, xropen, parcomp, parreg) %>% filter(if_any(!contains("polity"), ~.<0))
+
+pol %>% select(autoc, democ, polity) %>% filter(autoc < 0)
+
+gwf %>% count(country) %>% arrange(n)
+gwf %>% count(regimetype)
+
+gwf %>%
+  count(year, regimetype) %>%
+  ggplot(aes(x = year, y = n, color = regimetype)) + geom_line()
+
+gwf["disagree"] %>% distinct
+
+range(gwf$year)
+
+gwf
+
+# major powers plot
+
+cow_majors %>%
+  filter(endyear >= 1945) %>%
+  ggplot() + geom_linerange(aes(xmin = styear, xmax = endyear, y = factor(ccode)))
+
+cinc %>% count(pec) %>% ggplot(aes(x = pec)) + geom_histogram()
+```

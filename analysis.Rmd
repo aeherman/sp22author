@@ -1,0 +1,20 @@
+---
+title: "analysis"
+author: "Arielle Herman"
+date: "5/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+getwd()
+dy <- readRDS("data/output/dyad_year.rds")
+dy
+```
+
+```{r}
+range(dy$year)
+
+mylogit <- glm(mid ~ splines::ns(autoc + democ + majpow + allied + relpow, 3), data = dy %>% na.omit,
+               family = "binomial")
+summary(mylogit)
+```
