@@ -1,0 +1,1 @@
+Repository for my final project in Authoritarianism in Spring 2022.  Hoping to replicate a previous paper, using data from: Geddes, Polity 5, and Correlates of War.  Hopefully, will be able to make this repository public for replication.
