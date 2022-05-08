@@ -10,17 +10,12 @@ library(tidyverse)
 library(haven)
 library(peacesciencer)
 source("metadata.R")
+
 # contiguity data
 data(cow_contdir)
 data(cow_majors)
 data("cow_alliance")
-# add_cow_alliance()
-#add_contiguity()
-#add_cow_majors()
-#add_cow_mids()
 
-data("cow_mid_ddydisps")
-data("cow_mid_disps")
 # geddes categorization data
 # case: country-year
 # cowcode, year
@@ -198,7 +193,8 @@ almost_done <- second_join %>%
 done <- almost_done %>% left_join(year_cont) %>%
   left_join(year_ally) %>%
   mutate(across(c(allied, cont, mid), ~ifelse(is.na(.), FALSE, .))) %>% distinct %>%
-  mutate(autocracy = dyadtype != "democracy")
+  mutate(autoc = !dyadtype %in% c("democracy", "other")) %>%
+  mutate(democ = dyadtype == "democracy")
 
 saveRDS(done, "data/output/dyad_year.rds")
 ```
