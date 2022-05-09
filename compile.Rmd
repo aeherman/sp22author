@@ -55,13 +55,13 @@ pol[pol_metadata$col] <- pol_labelled_cols
 ```
 
 
-```{r}
+```{r eval=F}
 # 1. expand data frame for each year of conflict
 
 
 country_year <- midb %>%
   # keep observations starting at 1945
-  filter(styear >= 1945) %>%
+  filter(styear > 1945) %>%
   # only keep conflicts that involve dyads
   group_by(dispnum) %>% filter(max(row_number()) <= 2) %>% ungroup %>%
   #filter(dispnum  %in% c(20, 7, 26)) %>%
@@ -122,6 +122,7 @@ country_year <- country_year %>% left_join(year_maj) %>% mutate(majpow = !is.na(
 ```{r}
 year_ally <- cow_alliance %>% mutate(allied = if_any(starts_with("cow"), ~ . > 0)) %>%
   select(starts_with("cc"), year, allied)
+
 year_cont <- cow_contdir %>% mutate(across(c(begin, end), ~as.double(floor(./100)))) %>%
   rowwise() %>% mutate(year = list(seq(begin, end))) %>% unnest(year) %>%  mutate(cont = TRUE) %>%
   select(starts_with("c"), year, -conttype) %>% distinct
@@ -131,72 +132,278 @@ year_maj <- cow_majors %>% rowwise() %>%
   select(ccode, year) %>%
   mutate(majpow = TRUE)
 
-year_midb <- midb %>% select(dispnum, ccode, styear, endyear) %>%
-  rowwise() %>% mutate(year = list(seq(styear, endyear))) %>% unnest(year) %>%
-  mutate(mid = TRUE) %>%
-  select(year, ccode, mid, dispnum) %>% distinct
+gwf_sub <- gwf %>%
+  select(cowcode, year, g_party, g_military, g_monarchy, g_personal, g_nonautocracy) %>%
+  rename(ccode = cowcode) %>% rename_all(~str_replace(., "g_", "")) %>%
+  mutate(type = case_when(
+    is.na(nonautocracy) ~ "autoc",
+    nonautocracy == "democracy" ~ "democ",
+    TRUE ~ "other")) %>% select(-nonautocracy) %>% fastDummies::dummy_columns("type") %>% select(-type) %>%
+  rename_all(~str_replace(., "type_", "")) %>%
+  pivot_longer(cols = c(party, military, monarchy, personal, democ, other), names_to = "regimetype") %>%
+  filter(value == 1) %>% select(-value)
+```
 
+```{r}
+# years since last conflict
+year_midb <- midb %>%
+  select(dispnum, ccode, styear, endyear) %>%
+  rowwise() %>% mutate(year = list(seq(styear, endyear))) %>%
+  unnest(year) %>% select(dispnum, ccode, year, styear, endyear) %>% distinct
+
+#year_midb %>% filter(ccode == 210)
+  #filter(year > 1945, year < 2011)
+#all_years_midb <- year_midb %>% rowwise() %>% mutate(year = list(seq(styear, endyear)))
+#all_years_midb %>% filter(ccode == 210)
+
+# I lose two rows because cow_states thinks 20 started in 1920, and they're listed as having a conflict starting in 1918.  However, I don't care, because it works for the data currently (no country has more than 3 start years),
+# and I only want MID years starting in 1945
+# to confirm that it works, I wrote the code below
+```{r eval = F}
+rows <- matrix(nrow = length(doubles), ncol = 3)
+doubles <- cow_states %>% select(ccode, styear) %>% count(ccode) %>% arrange(desc(n)) %>% #filter(n > 1) %>%
+  pull(ccode)
+for(i in 1:length(doubles)[1]) {
+  code <- doubles[i]
+  wo_styear <- year_midb %>% select(ccode, year) %>% distinct %>% filter(ccode == code) %>% filter(year >= 1946)
+  w_styear <- wo_styear %>% left_join(cow_states %>% select(ccode, styear), by = c("ccode")) %>%
+    arrange(year, desc(styear)) %>% 
+    group_by(ccode, year) %>% filter(styear == max(styear))
+  rows[i, ] <- c(code, nrow(wo_styear), nrow(w_styear))
+}
+```
+```{r}
+# 4774 rows before and 4772 after joining in the cow_states data because of Canada discrepency
+#8343
+midb_splitted <-
+  year_midb %>% select(ccode, year) %>% distinct %>% filter(ccode == 255) %>%
+  left_join(cow_states %>% select(ccode, styear, endyear), by = c("ccode")) %>%
+  filter(year >= styear) %>% arrange(ccode, year) %>%
+  group_by(ccode, year) %>% filter(styear == max(styear)) %>%
+  group_by(ccode, styear) %>% arrange(ccode, year) %>%
+  group_split()
+
+#element <- midb_splitted[[1]]
+
+diffs <- lapply(midb_splitted, function(element) {
+  first_disp <- min(element$year)
+  start <- min(element$styear)
+  end <- max(element$endyear)
+  ccode <- unique(element$ccode)
+  
+  if(start == first_disp) {
+    first_lapse <- NULL
+  } else {
+    first_lapse <- 1:(first_disp - start)
+  }
+  
+  if(last(element$year) == end) {
+    lapse <- diff(element$year)
+  } else {
+    lapse <- diff(c(element$year, end))
+  }
+  
+  lapsed <- c(first_lapse, unlist(lapply(lapse, function(item) 1:item))-1)
+  full <- element %>% mutate(disp = TRUE) %>%
+    full_join(tibble(ccode, year = seq(start, end)), by = c("ccode", "year")) %>% arrange(year) %>%
+    mutate(disp = !is.na(disp),
+           styear = ifelse(is.na(styear), start, styear), 
+           endyear = ifelse(is.na(endyear), end, endyear))
+  
+  final <- last(full$disp)
+  
+  if(final) {
+    lapsed_plus <- c(lapsed, 0)
+  } else {
+    lapsed_plus <- c(lapsed, last(lapsed) + 1)
+  }
+  
+  #if(length(lapsed_plus) < nrow(full)) {
+  #  last_lapsed <- last(lapsed_plus)
+  ##  last_row <- nrow(full)
+  #  remainder <- last_row - length(lapsed_plus)
+  #  lapsed_add <- c(lapsed_plus, last_lapsed+1:remainder)
+  #}
+  
+  full$lapse <- lapsed_plus#[1:nrow(full)]
+  return(full)
+}) %>% reduce(bind_rows) %>% #filter(year > 1945) %>%
+  select(-styear)
+```
+
+```{r}
 country_year <- cow_states %>%
   group_by(ccode) %>% rowwise() %>%
   # 243 rows
   mutate(year = list(seq(styear, endyear))) %>%
   # 15,951 rows
-  unnest(year) %>%
+  unnest(year) %>% select(stateabb, ccode, year) %>%
+  filter(year > 1945, year < 2011) %>%
   left_join(cinc, by = c("ccode", "year", "stateabb")) %>%
-  left_join(pol, by = c("ccode", "year")) %>%
-  left_join(gwf, by = c("ccode" = "cowcode", "year")) %>%
-  select(-styear, -endyear) %>%
-  left_join(year_maj) %>% mutate(majpow = !is.na(majpow)) %>%
-  left_join(year_midb) %>%
-  #            filter(endyear >= 1945, styear <= 2010), by = c("ccode")) %>%
-  select(stateabb, ccode, year, #pec,
-         cinc, democ, g_regimetype, majpow, mid, dispnum) %>% ungroup %>%
-  filter(year >= 1945, year <= 2010) %>%
-  mutate(geddes_regimetype = case_when(
-           str_detect(g_regimetype, "-") ~ "hybrid",
-           str_detect(g_regimetype, "party|oligarchy") ~ "party",
-           str_detect(g_regimetype, "military") ~ "military",
-           TRUE ~ g_regimetype),
-         regimetype = case_when(
-           # makes more sense just to use geddes unless we don't have her?
-           !is.na(geddes_regimetype) ~ geddes_regimetype,
-           democ >= 6 ~ "democracy",
-           TRUE ~ g_regimetype
-         ))
-# 9412 to 11809
+  #left_join(pol, by = c("ccode", "year")) %>%
+  left_join(gwf_sub, by = c("ccode", "year")) %>%
+  left_join(year_maj) %>% mutate(majpow = !is.na(majpow))
 
+#nrow(country_year)
+```
+```{r}
+#year_midb[1]
+#diffs
+
+#wtf <- country_year %>% 
+  left_join(year_midb %>% filter(year > 1945)) #%>% filter(ccode == 652)
+
+#count(country_year, ccode, year) %>% filter(n > 1)
+# for every row added by year_midb, the country fought in more than one mid
+#wtf %>% group_by(ccode, year) %>% filter(max(row_number()) > 1) %>%
+#  group_by(stateabb, year) %>% summarize(n = n(), dispnums = length(unique(dispnum))) %>%
+#  filter(is.na(dispnums))
+
+#wtf %>% group_by(ccode, year) %>% summarize(n = n(), dispnums = paste(unique(dispnum), collapse = ", ")) %>% mutate(dyads = choose(n, 2) * factorial(2), dyads = ifelse(dyads == 0, 2, dyads)) %>% ungroup() %>%
+#  summarize(sum(dyads))
+
+# 11,713
+country_year_final <- country_year %>%
+  filter(year > 1945, year <= 2010) %>%
+  #mutate(devel = pec >= median(pec, na.rm = TRUE)) %>%
+  select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc) %>%
+  left_join(diffs)
+```
+```{r}
+year_midb_split <- midb %>%
+  select(dispnum, ccode, styear, endyear) %>%
+  rowwise() %>% mutate(year = list(seq(styear, endyear))) %>%
+  unnest(year) %>%
+  #filter(year > 1945, year <= 2010) %>%
+  group_by(year, dispnum) %>% group_split()
+
+expand_midb <- lapply(year_midb_split, function(disp_year) {
+  expand(disp_year, ccode1 = ccode, ccode2 = ccode, dispnum, year) %>% filter(ccode2 != ccode1)
+}) %>% reduce(bind_rows)
+```
+
+```{r eval=F}
+expand_midb %>% count(ccode1, dispnum) %>% arrange(desc(n))
+expand_midb %>% filter(is.na(dispnum))
+midb %>% filter(is.na(dispnum))
+midb
+expand_midb %>% filter(dispnum == 4182, ccode1 %in% c(652), ccode2 %in% c(666), year < 1996) %>%
+  left_join(midb %>% select(dispnum, ccode, styear, endyear),
+                                    by = c("ccode1" = "ccode", "dispnum"))
+
+midb %>% group_by(ccode, dispnum) %>% #count %>% filter(n > 1) %>% ungroup() %>% summarize(mean(n))
+  filter(max(row_number()) > 1) %>% arrange(dispnum, ccode)
+midb %>% filter(dispnum == 4182, ccode == 652)
+
+# check number of rows
+year_midb_split %>% reduce(bind_rows) %>%
+  group_by(dispnum, year) %>% count %>%
+  mutate(rows = choose(n, 2) * factorial(2)) %>%
+  pull(rows) %>% sum
+
+joined <- expand_midb %>%
+  left_join(midb %>% select(dispnum, ccode, styear, endyear),
+                                    by = c("ccode1" = "ccode", "dispnum"))
+joined %>% filter(dispnum == 4182) %>% select(ccode1, dispnum, year, endyear)
+# not(ccode1 )
+# joined %>% filter(~(ccode1 == expand_midb.ccode1 & dispnum == expand_midb.dispnum))
+test <- apply(joined, 1, function(row) {
+  row[c("ccode1", "dispnum")] %in% expand_midb[c("ccode1", "dispnum")]
+})
+
+j1 = joined %>% filter(dispnum %in% c(4, 252))
+j2 = joined %>% filter(dispnum == 4)
+subset(joined, !(ccode1 %in% expand_midb$ccode1 & dispnum %in% expand_midb$dispnum & year %in% expand_midb$year))
+
+joined[c("ccode1", "ccode2", "dispnum", "year")] %>% distinct
+
+joined %>% group_by(ccode1, ccode2, dispnum, year) %>% filter(max(row_number()) > 1)
+
+ == 
+joined
+joined %>% distinct
+expand_midb %>% count(ccode1, dispnum) %>% arrange(desc(n))
+joined %>% count(ccode1, dispnum) %>% arrange(desc(n))
+
+```
+
+```{r}
+#country_year
 splitted <- cow_states %>%
   rowwise() %>%
   mutate(year = list(seq(styear, endyear))) %>%
   unnest(year) %>%
-  filter(year >= 1945, year <= 2010) %>%
+  #filter(year > 1945, year <= 2010) %>%
   group_by(year) %>% group_split()
 
 expanded <- lapply(splitted, function(element) {
   expand(element, ccode1 = ccode, ccode2 = ccode, year) %>% filter(ccode2 != ccode1)
   }) %>% reduce(bind_rows)
 
+#filtered <- country_year_final %>% filter(if_all(starts_with("cc"), ~. %in% c(2, 70, 20)), year == 1946)
+#country_year_final %>% filter(ccode == 210, year == 1946)
+#filtered %>% filter(year == 1946)
+#country_year_final %>% filter(year == 1958) %>% group_by(ccode, year) %>% count
+#expanded %>% filter(year == 1958) %>% group_by(ccode1) %>% count
+#test %>% filter(ccode1 == 2, year == 1958) %>% group_by(ccode1, year) %>% count
 
-test <- expanded %>% left_join(country_year, by = c("ccode1" = "ccode", "year"))
-second_join <- test %>% left_join(country_year, by = c("ccode2" = "ccode", "year"))
+test <- expanded %>% filter(year >= 1946, year < 2011) %>%
+  left_join(country_year_final, by = c("ccode1" = "ccode", "year"))
+second_join <- test %>% left_join(country_year_final %>% select(-lapse), by = c("ccode2" = "ccode", "year"))
+third_join <- second_join %>% left_join(expand_midb %>% filter(year > 1945, year < 2011), by = c("ccode1", "ccode2", "year"))
 
-almost_done <- second_join %>%
+#expand_midb %>% group_by(ccode1, ccode2, year) %>% summarize(n = n(), disps = paste(unique(dispnum), collapse = ", ")) %>%
+#  filter(n > 1)
+```
+
+```{r}
+almost_done <- third_join %>%
   mutate(
-    majpow = rowSums(across(starts_with("majpow")), na.rm = TRUE) > 0,
+    majpow = rowSums(across(starts_with("majpow"), na.rm = TRUE)) > 0,
     relpow = ifelse(cinc.x > cinc.y, cinc.x / cinc.y, cinc.y / cinc.x),
     relpow = log(relpow),
     homogenous = regimetype.x == regimetype.y,
-    mid = dispnum.y == dispnum.x,
-    dyadtype = ifelse(homogenous, regimetype.x, "other")
-    ) %>% select(-contains("."))
+    mid = !is.na(dispnum),
+    mid = ifelse(is.na(lapse), NA, mid),
+    dyadtype = ifelse(homogenous, regimetype.x, "mixed")) %>% select(-contains("."))
 
 done <- almost_done %>% left_join(year_cont) %>%
   left_join(year_ally) %>%
-  mutate(across(c(allied, cont, mid), ~ifelse(is.na(.), FALSE, .))) %>% distinct %>%
-  mutate(autoc = !dyadtype %in% c("democracy", "other")) %>%
-  mutate(democ = dyadtype == "democracy")
-
+  mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .))) %>% distinct
+# 1,447,626
 saveRDS(done, "data/output/dyad_year.rds")
+```
+
+```{r eval F}
+
+second_join %>% filter(dispnum == 252) %>% arrange(stateabb.y)
+midb %>% filter(dispnum == 252)
+filter(midb, ccode == 2)
+almost_done %>% filter(ccode1 == 800, majpow)
+
+
+lapse_codes <- unique(country_year_final %>% filter(is.na(lapse)) %>% select(ccode))
+# the remaining ones that are NA aren't in the dispute database
+filter(midb, ccode %in% lapse_codes)
+almost_done %>% filter(is.na(lapse))
+diffs %>% filter(ccode == 210)
+diffs %>% filter(ccode == 210, year == 1946)
+gwf_sub %>% filter(ccode == 315)
+cow_majors
+diffs %>% filter(ccode == 150, year == 1963)
+midb %>% filter(ccode == 210)
+cow_states %>% filter(ccode == 210)
+diffs %>% filter(ccode == 150, year == 1963)
+
+# no NAs in mid
+# nas in dispnum mean either that there was no record of a dispute, or that the country wasn't included in the dataset
+# nas in dyadtype or homogenous mean that one of the countries lacks a coding in the geddes dataframe for that given year
+# nas in lapse mean that the country is not recorded in the dispute dataset.  there are fewer nas in lapse than in dispnum because nas in dispnum also mean that there wasn't a recorded dispute.  mid is recorded as NA when the country is not included in the original dispute dataset, such that there are no recordings of disputes, or lackthereof.
+colSums(is.na(done))
+colSums(is.na(almost_done))
+almost_done %>% filter(is.na(dispnum), !mid, is.na(disp.y), !disp.x)
+almost_done %>% filter(!is.na(lapse), is.na(dispnum), is.na(disp.x))
+almost_done %>% filter(is.na(lapse), !mid)
 ```
 
 
@@ -235,8 +442,15 @@ gwf
 # major powers plot
 
 cow_majors %>%
-  filter(endyear >= 1945) %>%
-  ggplot() + geom_linerange(aes(xmin = styear, xmax = endyear, y = factor(ccode)))
+  filter(endyear > 1945) %>%
+  mutate(styear = ifelse(styear <= 1945, 1945, styear)) %>%
+  ggplot() + geom_linerange(aes(xmin = styear, xmax = endyear, y = factor(ccode))) +
+  ggtitle("Major Powers (1945 - 2010)")
 
 cinc %>% count(pec) %>% ggplot(aes(x = pec)) + geom_histogram()
+
+cinc %>% summarize(mean = mean(pec, na.rm = TRUE), med = median(pec, na.rm = TRUE))
+
+cinc %>% filter(year > 1945, pec < median(pec, na.rm = TRUE)) %>% pull(stateabb) %>% unique
+
 ```
