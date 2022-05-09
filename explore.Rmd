@@ -1,0 +1,62 @@
+---
+title: "explore"
+author: "Arielle Herman"
+date: "5/8/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+load("data/input/data_components.rdata")
+dy <- readRDS("data/output/dyad_year.rds")
+library(tidyverse)
+theme_set(theme_bw())
+```
+
+```{r include=F}
+colSums(is.na(dy))
+nrow(dy)
+```
+
+```{r include=F}
+dy %>% group_by(year, dyadtype) %>% summarize(mean = mean(mid, na.rm = TRUE)) %>%
+  ggplot(aes(x = year, y = mean, color = dyadtype)) + geom_line()
+
+# confirm mutually exclusive categories
+gwf %>% count(g_party, g_military, g_monarchy, g_personal, g_nonautocracy)
+#gwf_sub %>% mutate(sum = rowSums(across(c(party:personal, democ:other))))
+
+max(cinc$pec,na.rm = TRUE)
+max(log(cinc$pec + 1),na.rm = TRUE)
+```
+
+```{r echo=FALSE}
+ggplot(cinc) + geom_histogram(aes(x = pec)) + theme_bw() + ylab(NULL) +
+  labs(title = "Primary Energy Consumption",
+       subtitle = "Correlates of War: National Material Capabitilies")
+ggplot(cinc) + geom_histogram(aes(x = log(1 + pec))) + theme_bw() + ylab(NULL) +
+    labs(title = "Primary Energy Consumption Log Transformation",
+       subtitle = "Correlates of War: National Material Capabitilies")
+```
+
+```{r echo=F}
+cow_majors %>% left_join(cow_states %>% select(ccode, statenme)) %>%
+  filter(endyear > 1945) %>%
+  mutate(styear = ifelse(styear <= 1945, 1945, styear)) %>%
+  ggplot(aes(color = statenme)) + geom_linerange(aes(xmin = styear, xmax = endyear, y = factor(ccode))) +
+  ggtitle("Major Powers (1945 - 2010)") +
+  labs(subtitle = "The Correlates of War Project") +
+  theme_bw() +
+  theme(legend.position = "none", axis.text.y = element_blank()) +
+  ylab(NULL) + xlab(NULL) +
+  scale_color_viridis_d() + 
+  geom_text(aes(x = styear, y = factor(ccode), label = statenme), hjust = 0, vjust = -0.3)
+```
+
+```{r include=F}
+midb %>% filter(endyear > 1945) %>% group_by(styear) %>% count(dispnum) %>% count(n) %>%
+  ggplot(aes(x = styear, y = nn)) + geom_line()
+dy %>% filter(ccode1 < ccode2) %>% count(dispnum, year)
+```
