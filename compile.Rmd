@@ -53,7 +53,18 @@ pol_labelled_cols <- lapply(pol_metadata$col, function(col) {
 }) %>% reduce(bind_cols)
 pol[pol_metadata$col] <- pol_labelled_cols
 
-save(pol, midb, cinc, gwf, cow_contdir, cow_majors, cow_alliance, file = "data/input/data_components.rdata")
+gwf_sub <- gwf %>%
+  select(cowcode, year, g_party, g_military, g_monarchy, g_personal, g_nonautocracy) %>%
+  rename(ccode = cowcode) %>% rename_all(~str_replace(., "g_", "")) %>%
+  mutate(type = case_when(
+    is.na(nonautocracy) ~ "autoc",
+    nonautocracy == "democracy" ~ "democ",
+    TRUE ~ "other")) %>% select(-nonautocracy) %>% fastDummies::dummy_columns("type") %>% select(-type) %>%
+  rename_all(~str_replace(., "type_", "")) %>%
+  pivot_longer(cols = c(party, military, monarchy, personal, democ, other), names_to = "regimetype") %>%
+  filter(value == 1) %>% select(-value)
+
+save(pol, midb, cinc, gwf, gwf_sub, cow_contdir, cow_majors, cow_alliance, cow_states, file = "data/input/data_components.rdata")
 ```
 
 
@@ -133,17 +144,6 @@ year_maj <- cow_majors %>% rowwise() %>%
   mutate(year = list(seq(styear, endyear))) %>% unnest(year) %>%
   select(ccode, year) %>%
   mutate(majpow = TRUE)
-
-gwf_sub <- gwf %>%
-  select(cowcode, year, g_party, g_military, g_monarchy, g_personal, g_nonautocracy) %>%
-  rename(ccode = cowcode) %>% rename_all(~str_replace(., "g_", "")) %>%
-  mutate(type = case_when(
-    is.na(nonautocracy) ~ "autoc",
-    nonautocracy == "democracy" ~ "democ",
-    TRUE ~ "other")) %>% select(-nonautocracy) %>% fastDummies::dummy_columns("type") %>% select(-type) %>%
-  rename_all(~str_replace(., "type_", "")) %>%
-  pivot_longer(cols = c(party, military, monarchy, personal, democ, other), names_to = "regimetype") %>%
-  filter(value == 1) %>% select(-value)
 ```
 
 ```{r}
