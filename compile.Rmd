@@ -52,6 +52,8 @@ pol_labelled_cols <- lapply(pol_metadata$col, function(col) {
   pol[col] %>% mutate(across(col, ~labelled(as.integer(.), labels, label)))
 }) %>% reduce(bind_cols)
 pol[pol_metadata$col] <- pol_labelled_cols
+
+save(pol, midb, cinc, gwf, cow_contdir, cow_majors, cow_alliance, file = "data/input/data_components.rdata")
 ```
 
 
@@ -98,7 +100,7 @@ country_year <- midb %>%
          majpow) #%>%
   group_by(dispnum, year) %>%
   mutate(homogenous = length(unique(regimetype)) == 1,
-         type = ifelse(homogenous, regimetype, "other"))
+         type = ifelse(homogenous, regimetype, "mixed"))
 
 mid_dyad <- country_year %>%
   group_by(dispnum, year) %>% summarize(
@@ -248,10 +250,10 @@ country_year <- cow_states %>%
 
 country_year_final <- country_year %>%
   filter(year > 1945, year <= 2010) %>%
-  #mutate(devel = pec >= median(pec, na.rm = TRUE)) %>%
-  select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc) %>%
+  mutate(log_pec = log(pec + 1)) %>% group_by(year) %>%
+  mutate(pec_bi = log_pec >= median(log_pec, na.rm = TRUE)) %>%
+  select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc, log_pec, pec_bi) %>%
   left_join(diffs)
-
 #nrow(country_year)
 ```
 ```{r eval=F}
@@ -353,7 +355,7 @@ expanded <- lapply(splitted, function(element) {
 
 first_join <- expanded %>% filter(year >= 1946, year < 2011) %>%
   left_join(country_year_final, by = c("ccode1" = "ccode", "year"))
-second_join <- first_join %>% left_join(country_year_final %>% select(-lapse), by = c("ccode2" = "ccode", "year"))
+second_join <- first_join %>% left_join(country_year_final %>% select(-lapse, -log_pec), by = c("ccode2" = "ccode", "year"))
 third_join <- second_join %>% left_join(expand_midb %>% filter(year > 1945, year < 2011), by = c("ccode1", "ccode2", "year"))
 
 #expand_midb %>% group_by(ccode1, ccode2, year) %>% summarize(n = n(), disps = paste(unique(dispnum), collapse = ", ")) %>%
@@ -369,17 +371,23 @@ almost_done <- third_join %>%
     homogenous = regimetype.x == regimetype.y,
     mid = !is.na(dispnum),
     mid = ifelse(is.na(lapse), NA, mid),
-    #autoc = ifelse(homogenous, autoc.x, "mixed"),
+    autoc = ifelse(homogenous, autoc.x, 0),
+    pec_bi = pec_bi.x == TRUE & pec_bi.y == TRUE,
     #regimetype = regimetype.x,
     dyadtype = ifelse(homogenous, regimetype.x, "mixed")) %>% select(-contains("."))
 
 done <- almost_done %>% left_join(year_cont) %>%
   left_join(year_ally) %>%
-  mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .))) %>% distinct
+  mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .))) %>% distinct %>%
+  select(ccode1, ccode2, year, mid, dispnum, homogenous, dyadtype, autoc, cont, allied, majpow, relpow, pec_bi, log_pec, lapse)
 colSums(is.na(almost_done))
 # 1,447,626
 saveRDS(done, "data/output/dyad_year.rds")
 filter(almost_done, is.na(lapse))
+table(done$autoc)
+
+table(done$mid)
+mean(done$mid, na.rm = TRUE)
 
 diffs %>% filter(ccode == 2, year == 1946)
 year_midb %>% filter(ccode == 2, year == 1946)
@@ -414,15 +422,14 @@ colSums(is.na(done))
 colSums(is.na(almost_done))
 almost_done %>% filter(is.na(dispnum), !mid, is.na(disp.y), !disp.x)
 almost_done %>% filter(!is.na(lapse), is.na(dispnum), is.na(disp.x))
-almost_done %>% filter(is.na(lapse), !mid)
+almost_done %>% filter(is.na(lapse), is.na(homogenous))
+
 ```
 
 
-```{r}
+```{r eval=F}
 cow_alliance %>% filter(year == 2011, across(starts_with("cc"), ~. %in% c(770, 2)))
-```
 
-```{r}
 cow_alliance %>% filter(if_all(starts_with("cow"),~ . == 0)) %>%
   filter(year == 2000)
 
@@ -431,7 +438,7 @@ cow_alliance %>% filter(ccode1 == 740)
 
 
 
-```{r}
+```{r eval=F}
 # governments in transition get the same standardized code for both autoc and democ
 pol %>% count(autoc, democ, polity, xrreg, xrcomp, xropen, parcomp, parreg) %>% filter(if_any(!contains("polity"), ~.<0))
 
