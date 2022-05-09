@@ -159,6 +159,8 @@ year_midb <- midb %>%
 # I lose two rows because cow_states thinks 20 started in 1920, and they're listed as having a conflict starting in 1918.  However, I don't care, because it works for the data currently (no country has more than 3 start years),
 # and I only want MID years starting in 1945
 # to confirm that it works, I wrote the code below
+```
+
 ```{r eval = F}
 rows <- matrix(nrow = length(doubles), ncol = 3)
 doubles <- cow_states %>% select(ccode, styear) %>% count(ccode) %>% arrange(desc(n)) %>% #filter(n > 1) %>%
@@ -176,7 +178,7 @@ for(i in 1:length(doubles)[1]) {
 # 4774 rows before and 4772 after joining in the cow_states data because of Canada discrepency
 #8343
 midb_splitted <-
-  year_midb %>% select(ccode, year) %>% distinct %>% filter(ccode == 255) %>%
+  year_midb %>% select(ccode, year) %>% distinct %>% #filter(ccode == 255) %>%
   left_join(cow_states %>% select(ccode, styear, endyear), by = c("ccode")) %>%
   filter(year >= styear) %>% arrange(ccode, year) %>%
   group_by(ccode, year) %>% filter(styear == max(styear)) %>%
@@ -244,14 +246,20 @@ country_year <- cow_states %>%
   left_join(gwf_sub, by = c("ccode", "year")) %>%
   left_join(year_maj) %>% mutate(majpow = !is.na(majpow))
 
+country_year_final <- country_year %>%
+  filter(year > 1945, year <= 2010) %>%
+  #mutate(devel = pec >= median(pec, na.rm = TRUE)) %>%
+  select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc) %>%
+  left_join(diffs)
+
 #nrow(country_year)
 ```
-```{r}
+```{r eval=F}
 #year_midb[1]
 #diffs
 
 #wtf <- country_year %>% 
-  left_join(year_midb %>% filter(year > 1945)) #%>% filter(ccode == 652)
+#  left_join(year_midb %>% filter(year > 1945)) #%>% filter(ccode == 652)
 
 #count(country_year, ccode, year) %>% filter(n > 1)
 # for every row added by year_midb, the country fought in more than one mid
@@ -263,11 +271,7 @@ country_year <- cow_states %>%
 #  summarize(sum(dyads))
 
 # 11,713
-country_year_final <- country_year %>%
-  filter(year > 1945, year <= 2010) %>%
-  #mutate(devel = pec >= median(pec, na.rm = TRUE)) %>%
-  select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc) %>%
-  left_join(diffs)
+
 ```
 ```{r}
 year_midb_split <- midb %>%
@@ -347,9 +351,9 @@ expanded <- lapply(splitted, function(element) {
 #expanded %>% filter(year == 1958) %>% group_by(ccode1) %>% count
 #test %>% filter(ccode1 == 2, year == 1958) %>% group_by(ccode1, year) %>% count
 
-test <- expanded %>% filter(year >= 1946, year < 2011) %>%
+first_join <- expanded %>% filter(year >= 1946, year < 2011) %>%
   left_join(country_year_final, by = c("ccode1" = "ccode", "year"))
-second_join <- test %>% left_join(country_year_final %>% select(-lapse), by = c("ccode2" = "ccode", "year"))
+second_join <- first_join %>% left_join(country_year_final %>% select(-lapse), by = c("ccode2" = "ccode", "year"))
 third_join <- second_join %>% left_join(expand_midb %>% filter(year > 1945, year < 2011), by = c("ccode1", "ccode2", "year"))
 
 #expand_midb %>% group_by(ccode1, ccode2, year) %>% summarize(n = n(), disps = paste(unique(dispnum), collapse = ", ")) %>%
@@ -365,16 +369,23 @@ almost_done <- third_join %>%
     homogenous = regimetype.x == regimetype.y,
     mid = !is.na(dispnum),
     mid = ifelse(is.na(lapse), NA, mid),
+    #autoc = ifelse(homogenous, autoc.x, "mixed"),
+    #regimetype = regimetype.x,
     dyadtype = ifelse(homogenous, regimetype.x, "mixed")) %>% select(-contains("."))
 
 done <- almost_done %>% left_join(year_cont) %>%
   left_join(year_ally) %>%
   mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .))) %>% distinct
+colSums(is.na(almost_done))
 # 1,447,626
 saveRDS(done, "data/output/dyad_year.rds")
+filter(almost_done, is.na(lapse))
+
+diffs %>% filter(ccode == 2, year == 1946)
+year_midb %>% filter(ccode == 2, year == 1946)
 ```
 
-```{r eval F}
+```{r eval=F}
 
 second_join %>% filter(dispnum == 252) %>% arrange(stateabb.y)
 midb %>% filter(dispnum == 252)
