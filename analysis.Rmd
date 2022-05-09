@@ -2,19 +2,50 @@
 title: "analysis"
 author: "Arielle Herman"
 date: "5/7/2022"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
 getwd()
+library(tidyverse)
 dy <- readRDS("data/output/dyad_year.rds")
-dy
 ```
 
 ```{r}
-range(dy$year)
+dy_sub <- dy %>% select(-dispnum, -log_pec) %>% mutate(democ = dyadtype == "democ") %>% na.omit()
 
-mylogit <- glm(mid ~ splines::ns(autoc + democ + majpow + allied + relpow, 3), data = dy %>% na.omit,
-               family = "binomial")
-summary(mylogit)
+no_taw <- dy_sub %>% mutate(taw = if_all(c(ccode1, ccode2), ~ . %in% c(713, 710)),
+                        no_taw = ifelse(taw, FALSE, homogenous),
+                        dyadtype2 = ifelse(taw, "mixed", dyadtype))
+
+no_taw %>% filter(taw)
+
+log1 <- glm(mid ~ homogenous + majpow + cont + allied + majpow + relpow + pec_bi,
+            data = no_taw, family = "binomial")
+
+log2 <- glm(mid ~ no_taw + majpow + cont + allied + majpow + relpow + pec_bi,
+            data = no_taw, family = "binomial")
+
+log3 <- glm(mid ~ autoc + democ + majpow + cont + allied + majpow + relpow + pec_bi,
+            data = no_taw, family = "binomial")
+
+log4 <- glm(mid ~ dyadtype + majpow + cont + allied + majpow + relpow + pec_bi,
+            data = no_taw, family = "binomial")
+```
+
+```{r results='asis'}
+stargazer::stargazer(list(log1, log2, log3, log4), type = "latex", title = "Regression Results", header = FALSE)
+```
+
+```{r eval = F}
+undirected <- dy_sub %>% select(-log_pec, -lapse) %>% na.omit %>% filter(ccode1 < ccode2)
+log5 <- glm(mid ~ majpow + allied + relpow + autoc + democ + cont, data = undirected)
+summary(log3)
+
+no_taw %>% filter(homogenous, no_taw)
+
+
+
 ```
