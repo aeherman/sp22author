@@ -11,72 +11,6 @@ library(haven)
 library(peacesciencer)
 load("data/input/data_components.rdata")
 ```
-
-
-```{r eval=F}
-# 1. expand data frame for each year of conflict
-
-
-country_year <- midb %>%
-  # keep observations starting at 1945
-  filter(styear > 1945) %>%
-  # only keep conflicts that involve dyads
-  group_by(dispnum) %>% filter(max(row_number()) <= 2) %>% ungroup %>%
-  #filter(dispnum  %in% c(20, 7, 26)) %>%
-  rowwise() %>%
-  mutate(year = list(seq(styear, endyear))) %>%
-  unnest(year) %>%
-  select(-styear, -endyear) %>% #distinct(ccode, year)
-
-# 2. add the country-year variables
-  # energy and cinc: checked
-  left_join(cinc, by = c("ccode", "year")) %>%
-  # democracy regime type (a little unclear to me): review
-  left_join(pol, by = c("ccode", "year")) %>%
-  # autocracy regime type: review
-  left_join(gwf, by = c("ccode" = "cowcode", "year")) %>%
-  # major power: checked
-  left_join(left_join(year_maj)) %>%
-  
-  mutate(majpow = !is.na(majpow),
-         #econadv ? what is the cutoff in pec?: review
-         geddes_regimetype = case_when(
-           str_detect(g_regimetype, "-") ~ "hybrid",
-           str_detect(g_regimetype, "party|oligarchy") ~ "party",
-           str_detect(g_regimetype, "military") ~ "military",
-           TRUE ~ g_regimetype),
-         regimetype = case_when(
-           # makes more sense just to use geddes unless we don't have her?
-           !is.na(geddes_regimetype) ~ geddes_regimetype,
-           democ >= 6 ~ "democracy",
-           TRUE ~ g_regimetype
-         )) %>%
-  select(dispnum, ccode, g_country, year, regimetype, #pec,
-         cinc,
-         majpow) #%>%
-  group_by(dispnum, year) %>%
-  mutate(homogenous = length(unique(regimetype)) == 1,
-         type = ifelse(homogenous, regimetype, "mixed"))
-
-mid_dyad <- country_year %>%
-  group_by(dispnum, year) %>% summarize(
-    ccodes = paste(sort(unique(ccode)), collapse = ","),
-    relpow = log(max(cinc)/min(cinc)),
-    majpow = sum(majpow) > 0,
-    homogenous = unique(homogenous),
-    type = unique(type)
-    #homogenous = length(unique(regimetype)) == 1 & !is.na(regimetype)#,
-    #regimetype = ifelse(homogenous, regimetype, "other")
-    ) %>%
-  separate(ccodes, into = c("ccode1", "ccode2"), remove = FALSE) %>%
-  mutate(across(c(ccode1, ccode2), as.double)) %>% ungroup()
-
-
-country_year <- country_year %>% left_join(year_maj) %>% mutate(majpow = !is.na(majpow))
-
-
-```
-
 ```{r}
 year_ally <- cow_alliance %>% mutate(allied = if_any(starts_with("cow"), ~ . > 0)) %>%
   select(starts_with("cc"), year, allied)
@@ -121,6 +55,7 @@ for(i in 1:length(doubles)[1]) {
   rows[i, ] <- c(code, nrow(wo_styear), nrow(w_styear))
 }
 ```
+
 ```{r}
 # 4774 rows before and 4772 after joining in the cow_states data because of Canada discrepency
 #8343
