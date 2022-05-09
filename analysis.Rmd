@@ -13,7 +13,7 @@ library(tidyverse)
 dy <- readRDS("data/output/dyad_year.rds")
 ```
 
-```{r}
+```{r include=FALSE}
 dy_sub <- dy %>% select(-dispnum, -log_pec) %>% mutate(democ = dyadtype == "democ") %>% na.omit()
 
 no_taw <- dy_sub %>% mutate(taw = if_all(c(ccode1, ccode2), ~ . %in% c(713, 710)),
@@ -33,13 +33,15 @@ log3 <- glm(mid ~ autoc + democ + majpow + cont + allied + majpow + relpow + pec
 
 log4 <- glm(mid ~ dyadtype + majpow + cont + allied + majpow + relpow + pec_bi,
             data = no_taw, family = "binomial")
+
+no_taw %>% filter(!autoc, !democ) %>% count(dyadtype)
 ```
 
-```{r results='asis'}
+```{r results='asis', echo=FALSE}
 stargazer::stargazer(list(log1, log2, log3, log4), type = "latex", title = "Regression Results", header = FALSE)
 ```
 
-```{r eval = F}
+```{r eval = F, include=F}
 undirected <- dy_sub %>% select(-log_pec, -lapse) %>% na.omit %>% filter(ccode1 < ccode2)
 log5 <- glm(mid ~ majpow + allied + relpow + autoc + democ + cont, data = undirected)
 summary(log3)
