@@ -20,3 +20,11 @@ Barbara Geddes, Joseph Wright, and Erica Frantz. 2014. “Autocratic Breakdown a
 Palmer, Glenn, Roseanne W. McManus, Vito D’Orazio, Michael R. Kenwick, Mikaela Karstens, Chase Bloch, Nick Dietrich, Kayla Kahn, Kellan Ritter, Michael J. Soules. 2020. "The MID5 Dataset, 2011-2014: Procedures, Coding Rules, and Description." Working paper. Available at https://correlatesofwar.org/data-sets/MIDs/mid-5-data-and-supporting-materials.zip/view.
 
 Peceny, Mark, Caroline C. Beer, and Shannon Sanchez-Terry. “Dictatorial Peace?” The American Political Science Review 96, no. 1 (2002): 15–26. http://www.jstor.org/stable/3117807.
+
+@ARTICLE{peacesciencer-package,
+  AUTHOR = {Steven V. Miller},
+  JOURNAL = {Conflict Management and Peace Science},
+  TITLE = {peacesciencer}: An R Package for Quantitative Peace Science Research},
+  YEAR = {2022},
+  KEYWORDS = {peacesciencer, add_capital_distance(), add_ccode_to_gw(), add_gwcode_to_cow(), capitals},
+  URL = {http://svmiller.com/peacesciencer/}} 
