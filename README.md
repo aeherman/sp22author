@@ -1,5 +1,11 @@
 This project attempts to replicate the analysis in the 2002 paper, "[Dictatorial Peace?](http://www.jstor.org/stable/3117807)", using updated data for the final assignment in my spring 2022 course, Authoritarianism, taught by Professor Lisa Anderson.  The original paper attempts to use the regime types of a pair of countries (a.k.a. a dyad) to explain the likelihood the dyad will engage in a militarized interstate dispute (MID) during a given year.  In order to replicate the findings, I create a new directed dyad-year dataset, drawing from updated versions of the same data used in the original paper, which include the following:
 
+
+| Data | Original Data Source | New Data Source |
+|------|----------------------|-----------------|
+| Militarized Interstate Disputes (MIDs) | Correlates of War MID 3 | Correlates of War MID 5, specifically MIDB v5 |
+| Regime Type Classification
+
 1. Geddes
 2. Polity 5
 3. Correlates of War
