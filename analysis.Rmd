@@ -8,13 +8,13 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-getwd()
 library(tidyverse)
 dy <- readRDS("data/output/dyad_year.rds")
+dy
 ```
 
 ```{r include=FALSE}
-dy_sub <- dy %>% select(-dispnum, -log_pec) %>% mutate(democ = dyadtype == "democ") %>% na.omit()
+dy_sub <- dy %>% select(-dispnum, -log_pec, -pec_bi) %>% mutate(democ = dyadtype == "democ") %>% na.omit()
 
 no_taw <- dy_sub %>% mutate(taw = if_all(c(ccode1, ccode2), ~ . %in% c(713, 710)),
                         no_taw = ifelse(taw, FALSE, homogenous),
@@ -22,8 +22,9 @@ no_taw <- dy_sub %>% mutate(taw = if_all(c(ccode1, ccode2), ~ . %in% c(713, 710)
 
 no_taw %>% filter(taw)
 
-log1 <- glm(mid ~ homogenous + majpow + cont + allied + majpow + relpow + pec_bi,
+log1 <- glm(mid ~ homogenous + majpow + cont + allied + majpow + relpow + pec_bi_lag,
             data = no_taw, family = "binomial")
+summary(log1)
 
 log2 <- glm(mid ~ no_taw + majpow + cont + allied + majpow + relpow + pec_bi,
             data = no_taw, family = "binomial")
