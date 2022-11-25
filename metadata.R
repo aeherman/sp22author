@@ -1,5 +1,4 @@
-# metadata
-# file:///C:/Users/ariel/OneDrive/4-SP22/2_Auth/data/MID%205%20Data%20and%20Supporting%20Materials/MID%205.0%20Codebook.pdf
+# mid 5 metadata
 metadata <- tribble(~col, ~labels, ~label,
                     "sidea", c("yes" = 1, "no" = 0), "the side that contains the state (or states) that first crossed the threat-display-use of force threshold",
                     "revstate", c("yes" = 1,
