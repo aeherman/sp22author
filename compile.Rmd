@@ -5,7 +5,7 @@ date: "5/6/2022"
 output: html_document
 ---
 
-```{r include=FALSE, warning=F, message=F, eval=F}
+```{r include=FALSE, warning=F, message=F}
 library(tidyverse)
 library(haven)
 library(peacesciencer)
@@ -122,18 +122,20 @@ country_year <- cow_states %>%
   mutate(year = list(seq(styear, endyear))) %>%
   # 15,951 rows
   unnest(year) %>% select(stateabb, ccode, year) %>%
-  filter(year > 1945, year < 2011) %>%
+  filter(year >= 1945, year < 2011) %>%
   left_join(cinc, by = c("ccode", "year", "stateabb")) %>%
   #left_join(pol, by = c("ccode", "year")) %>%
   left_join(gwf_sub, by = c("ccode", "year")) %>%
   left_join(year_maj) %>% mutate(majpow = !is.na(majpow))
 
 country_year_final <- country_year %>%
-  filter(year > 1945, year <= 2010) %>%
-  mutate(log_pec = log(pec + 1)) %>% group_by(year) %>%
+  mutate(log_pec = log(pec + 1)) %>%
+  group_by(year) %>%
   mutate(pec_bi = log_pec >= median(log_pec, na.rm = TRUE)) %>%
+  filter(year >= 1945, year <= 2010) %>% 
   select(stateabb, ccode, year, cinc, pec, majpow, regimetype, autoc, log_pec, pec_bi) %>%
   left_join(diffs)
+
 #nrow(country_year)
 ```
 ```{r eval=F}
@@ -233,10 +235,10 @@ expanded <- lapply(splitted, function(element) {
 #expanded %>% filter(year == 1958) %>% group_by(ccode1) %>% count
 #test %>% filter(ccode1 == 2, year == 1958) %>% group_by(ccode1, year) %>% count
 
-first_join <- expanded %>% filter(year >= 1946, year < 2011) %>%
+first_join <- expanded %>% filter(year >= 1945, year < 2011) %>%
   left_join(country_year_final, by = c("ccode1" = "ccode", "year"))
 second_join <- first_join %>% left_join(country_year_final %>% select(-lapse, -log_pec), by = c("ccode2" = "ccode", "year"))
-third_join <- second_join %>% left_join(expand_midb %>% filter(year > 1945, year < 2011), by = c("ccode1", "ccode2", "year"))
+third_join <- second_join %>% left_join(expand_midb %>% filter(year >= 1945, year < 2011), by = c("ccode1", "ccode2", "year"))
 
 #expand_midb %>% group_by(ccode1, ccode2, year) %>% summarize(n = n(), disps = paste(unique(dispnum), collapse = ", ")) %>%
 #  filter(n > 1)
@@ -258,8 +260,12 @@ almost_done <- third_join %>%
 
 done <- almost_done %>% left_join(year_cont) %>%
   left_join(year_ally) %>%
-  mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .))) %>% distinct %>%
-  select(ccode1, ccode2, year, mid, dispnum, homogenous, dyadtype, autoc, cont, allied, majpow, relpow, pec_bi, log_pec, lapse)
+  mutate(across(c(allied, cont), ~ifelse(is.na(.), FALSE, .)),
+         pec_bi_lag = c(0, almost_done$pec_bi[-nrow(almost_done)])) %>%
+  filter(year > 1945) %>%
+  distinct %>%
+  select(ccode1, ccode2, year, mid, dispnum, homogenous,
+         dyadtype, autoc, cont, allied, majpow, relpow, pec_bi, pec_bi_lag, log_pec, lapse)
 colSums(is.na(almost_done))
 # 1,447,626
 saveRDS(done, "data/output/dyad_year.rds")
